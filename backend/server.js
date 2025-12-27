@@ -140,6 +140,11 @@ const connectDB = async () => {
 
 connectDB();
 
+app.get("/", (req, res) => {
+  res.send("API is running");
+});
+
+
 // Middleware to check MongoDB connection before handling requests
 app.use('/api', (req, res, next) => {
   if (mongoose.connection.readyState === 1) {
