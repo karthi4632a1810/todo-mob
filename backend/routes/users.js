@@ -50,7 +50,9 @@ router.get('/for-assignment', authRequired, authorizeRoles('DIRECTOR'), async (r
   try {
     const { role, departmentId } = req.query;
     
-    console.log('[for-assignment] Request received:', { role, departmentId, user: req.user?.email });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[for-assignment] Request received:', { role, departmentId, user: req.user?.email });
+    }
     
     let query = { isActive: true };
     
@@ -66,13 +68,17 @@ router.get('/for-assignment', authRequired, authorizeRoles('DIRECTOR'), async (r
       query.role = { $in: ['HOD', 'EMPLOYEE'] };
     }
 
-    console.log('[for-assignment] Query:', JSON.stringify(query));
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[for-assignment] Query:', JSON.stringify(query));
+    }
 
     const users = await User.find(query)
       .select('-password')
       .sort({ name: 1 });
 
-    console.log('[for-assignment] Found users:', users.length);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[for-assignment] Found users:', users.length);
+    }
 
     res.json({
       success: true,
@@ -101,7 +107,9 @@ router.get('/:id', authRequired, async (req, res) => {
     // Check if the ID is a valid MongoDB ObjectId format
     // This prevents routes like /for-assignment from being matched
     if (!req.params.id || !mongoose.Types.ObjectId.isValid(req.params.id)) {
-      console.log('[users/:id] Invalid ID format:', req.params.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[users/:id] Invalid ID format:', req.params.id);
+      }
       return res.status(400).json({
         success: false,
         message: 'Invalid user ID format',
@@ -110,7 +118,9 @@ router.get('/:id', authRequired, async (req, res) => {
       });
     }
     
-    console.log('[users/:id] Valid ID, fetching user:', req.params.id);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[users/:id] Valid ID, fetching user:', req.params.id);
+    }
 
     const user = await User.findById(req.params.id).select('-password');
     

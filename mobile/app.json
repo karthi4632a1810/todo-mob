@@ -25,7 +25,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ff509c36-4fc2-4d5e-8ef3-d2c58dcb9de8"
+      }
+    },
+    "owner": "karthi18102000"
   }
 }
-

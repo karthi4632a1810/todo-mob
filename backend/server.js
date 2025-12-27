@@ -8,16 +8,67 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
+// Validate required environment variables
+const requiredEnvVars = ['JWT_SECRET', 'MONGODB_URI'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error('ERROR: Missing required environment variables:');
+  missingEnvVars.forEach(envVar => {
+    console.error(`  - ${envVar}`);
+  });
+  console.error('\nPlease create a .env file based on .env.example');
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  }
+}
+
+// Validate JWT_SECRET strength in production
+if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET) {
+  if (process.env.JWT_SECRET.length < 32) {
+    console.error('ERROR: JWT_SECRET must be at least 32 characters long in production');
+    process.exit(1);
+  }
+  if (process.env.JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-production') {
+    console.error('ERROR: JWT_SECRET must be changed from default value in production');
+    process.exit(1);
+  }
+}
+
 // Security middleware
 app.use(helmet());
 
-// CORS configuration - allow all origins (for development)
-app.use(cors({
-  origin: '*', // Allow all origins
+// CORS configuration - configurable via environment variable
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowedOrigins = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : ['*'];
+    
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+    
+    // Allow all origins if '*' is specified (development only)
+    if (allowedOrigins.includes('*')) {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('WARNING: CORS is set to allow all origins in production. This is not recommended for security.');
+      }
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting - more lenient in development
 const limiter = rateLimit({
@@ -43,6 +94,9 @@ app.use(express.urlencoded({ extended: true }));
 // Logging middleware
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
+} else {
+  // Production logging - use combined format
+  app.use(morgan('combined'));
 }
 
 // MongoDB connection
@@ -74,7 +128,13 @@ const connectDB = async () => {
     console.error('1. MongoDB server is running');
     console.error('2. MONGODB_URI in .env is correct');
     console.error('3. Network connectivity to MongoDB');
-    // Don't exit - let the server start but log the error
+    
+    // In production, exit if database connection fails
+    if (process.env.NODE_ENV === 'production') {
+      console.error('FATAL: Cannot start server without database connection in production');
+      process.exit(1);
+    }
+    // In development, allow server to start but log the error
   }
 };
 
@@ -133,10 +193,27 @@ app.get('/api/health', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  // Log error
+  if (process.env.NODE_ENV === 'production') {
+    // In production, log to console (consider using a logging service)
+    console.error('Error:', {
+      message: err.message,
+      stack: err.stack,
+      url: req.url,
+      method: req.method,
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    // In development, show full stack trace
+    console.error(err.stack);
+  }
+  
+  // Send error response
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',
+    data: null,
+    errors: [err.message || 'An unexpected error occurred'],
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
@@ -145,12 +222,61 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: 'Route not found',
+    data: null,
+    errors: [`Route ${req.method} ${req.path} not found`]
   });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log('Production mode: Enhanced security and logging enabled');
+  }
+});
+
+// Graceful shutdown handling
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  server.close(() => {
+    console.log('HTTP server closed');
+    
+    mongoose.connection.close(false, () => {
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    });
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+// Listen for termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Promise Rejection:', err);
+  if (process.env.NODE_ENV === 'production') {
+    // In production, log and continue (don't crash)
+    // Consider using a logging service like Sentry here
+  } else {
+    // In development, show full error
+    throw err;
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  gracefulShutdown('uncaughtException');
 });
 

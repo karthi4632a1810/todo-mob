@@ -613,8 +613,16 @@ router.post('/:id/updates', authRequired, authorizeRoles('EMPLOYEE'), async (req
           });
         }
       } catch (notifError) {
-        console.error('Error creating notification:', notifError);
-        // Don't fail the request if notification fails
+        // Log error but don't fail the request if notification fails
+        if (process.env.NODE_ENV === 'production') {
+          console.error('Error creating notification:', {
+            message: notifError.message,
+            taskId: task._id,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.error('Error creating notification:', notifError);
+        }
       }
     }
 
@@ -637,7 +645,15 @@ router.post('/:id/updates', authRequired, authorizeRoles('EMPLOYEE'), async (req
       errors: null
     });
   } catch (error) {
-    console.error('Error updating task progress:', error);
+    if (process.env.NODE_ENV === 'production') {
+      console.error('Error updating task progress:', {
+        message: error.message,
+        taskId: req.params.id,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.error('Error updating task progress:', error);
+    }
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to update task progress',
@@ -727,7 +743,16 @@ router.post('/:id/updates/:updateId/reply', authRequired, async (req, res) => {
       errors: null
     });
   } catch (error) {
-    console.error('Error adding reply:', error);
+    if (process.env.NODE_ENV === 'production') {
+      console.error('Error adding reply:', {
+        message: error.message,
+        taskId: req.params.id,
+        updateId: req.params.updateId,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.error('Error adding reply:', error);
+    }
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to add reply',
