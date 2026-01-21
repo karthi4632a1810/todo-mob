@@ -49,7 +49,8 @@ router.post('/', authRequired, async (req, res) => {
     if (labels && labels.length > 0) {
       diaryData.labels = labels.map(label => ({
         name: label.name?.trim() || '',
-        color: label.color || '#6366f1'
+        color: label.color || '#6366f1',
+        icon: label.icon || 'flag'
       })).filter(label => label.name); // Remove empty labels
     }
 
@@ -309,7 +310,8 @@ router.patch('/:id', authRequired, async (req, res) => {
       }
       diary.labels = labels.map(label => ({
         name: label.name?.trim() || '',
-        color: label.color || '#6366f1'
+        color: label.color || '#6366f1',
+        icon: label.icon || 'flag'
       })).filter(label => label.name); // Remove empty labels
     }
 

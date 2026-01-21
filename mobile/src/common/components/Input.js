@@ -44,28 +44,32 @@ export default function Input({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 10,
+    letterSpacing: 0.1,
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 8,
+    borderWidth: 1.5,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     fontSize: 16,
-    minHeight: 48,
+    minHeight: 52,
+    backgroundColor: '#ffffff',
   },
   inputMultiline: {
     minHeight: 100,
     textAlignVertical: 'top',
+    paddingTop: 14,
   },
   error: {
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 6,
+    fontWeight: '500',
   },
 });
 

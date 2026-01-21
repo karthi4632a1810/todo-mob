@@ -3,10 +3,39 @@ const router = express.Router();
 const Department = require('../models/Department');
 const { authRequired, authorizeRoles } = require('../middleware/auth');
 
-// Get all departments (public endpoint for registration)
+// Get all departments (public endpoint for registration, but returns all for authenticated directors)
 router.get('/', async (req, res) => {
   try {
-    const departments = await Department.find({ isActive: true }).sort({ name: 1 });
+    // Check if user is authenticated and is a director
+    // If authenticated director, return all departments (including inactive)
+    // Otherwise, return only active departments (for registration/public use)
+    let query = {};
+    let user = null;
+    
+    // Try to get user from token (optional authentication)
+    try {
+      const token = req.headers.authorization?.split(' ')[1];
+      if (token) {
+        const jwt = require('jsonwebtoken');
+        const User = require('../models/User');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        user = await User.findById(decoded.userId).select('-password');
+      }
+    } catch (error) {
+      // Token invalid or missing - that's okay for public endpoint
+      // Just continue without user
+    }
+    
+    // If user is authenticated and is DIRECTOR, return all departments
+    if (user && user.isActive && user.role === 'DIRECTOR') {
+      // Return all departments for directors (including inactive)
+      query = {};
+    } else {
+      // For public/registration use, only return active departments
+      query = { isActive: true };
+    }
+    
+    const departments = await Department.find(query).sort({ name: 1 });
     
     res.json({
       success: true,

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { userAPI } from '../../services/api';
 import { departmentAPI } from '../../services/api';
 import Card from '../../common/components/Card';
@@ -37,6 +38,9 @@ export default function UserManagementScreen() {
   });
   const [errors, setErrors] = useState({});
   const [departments, setDepartments] = useState([]);
+  const [changePassword, setChangePassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
 
   const { user, isAuthenticated, token } = useSelector((state) => state.auth);
   const navigation = useNavigation();
@@ -110,6 +114,8 @@ export default function UserManagementScreen() {
       isActive: true,
     });
     setErrors({});
+    setChangePassword(true);
+    setShowPassword(false);
     setModalVisible(true);
   };
 
@@ -124,6 +130,8 @@ export default function UserManagementScreen() {
       isActive: userData.isActive !== undefined ? userData.isActive : true,
     });
     setErrors({});
+    setChangePassword(false);
+    setShowPassword(false);
     setModalVisible(true);
   };
 
@@ -139,7 +147,9 @@ export default function UserManagementScreen() {
     }
     if (!editingUser && !formData.password) {
       newErrors.password = 'Password is required for new users';
-    } else if (formData.password && formData.password.length < 6) {
+    } else if (editingUser && changePassword && formData.password && formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    } else if (!editingUser && formData.password && formData.password.length < 6) {
       newErrors.password = 'Password must be at least 6 characters';
     }
     if (!formData.department.trim()) {
@@ -235,14 +245,15 @@ export default function UserManagementScreen() {
     );
   };
 
-  // Filter users based on search query
+  // Filter users based on search query (only active users)
   const filteredUsers = useMemo(() => {
+    const activeUsers = users.filter(userItem => userItem.isActive);
     if (!searchQuery.trim()) {
-      return users;
+      return activeUsers;
     }
     
     const query = searchQuery.toLowerCase().trim();
-    return users.filter(userItem => {
+    return activeUsers.filter(userItem => {
       const name = (userItem.name || '').toLowerCase();
       const email = (userItem.email || '').toLowerCase();
       const role = (userItem.role || '').toLowerCase();
@@ -257,10 +268,57 @@ export default function UserManagementScreen() {
     });
   }, [users, searchQuery]);
 
+  // Get blocked users
+  const blockedUsers = useMemo(() => {
+    return users.filter(userItem => !userItem.isActive);
+  }, [users]);
+
+  const handleUnblock = async (userData) => {
+    Alert.alert(
+      'Unblock User',
+      `Are you sure you want to unblock "${userData.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unblock',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await userAPI.updateUser(userData._id, { isActive: true });
+              Alert.alert('Success', 'User unblocked successfully');
+              loadUsers();
+            } catch (error) {
+              let errorMessage = 'Failed to unblock user';
+              if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+              }
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const getRoleColor = (role) => {
     switch (role) {
       case 'DIRECTOR':
+      case 'PROFESSOR':
         return theme.colors.primary;
+      case 'HOD':
+        return theme.colors.info;
+      case 'EMPLOYEE':
+        return theme.colors.textSecondary;
+      default:
+        return theme.colors.textSecondary;
+    }
+  };
+
+  const getRoleTextColor = (role) => {
+    switch (role) {
+      case 'DIRECTOR':
+      case 'PROFESSOR':
+        return '#ffffff';
       case 'HOD':
         return theme.colors.info;
       case 'EMPLOYEE':
@@ -276,51 +334,68 @@ export default function UserManagementScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Top Bar with Rounded Bottom */}
+      <View style={styles.topBarContainer}>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#ffffff" />
+          </TouchableOpacity>
+          <Text style={styles.topBarTitle}>Manage Users</Text>
+          <TouchableOpacity 
+            onPress={() => setShowBlockedUsersModal(true)} 
+            style={styles.blockIconButton}
+          >
+            <Ionicons name="ban" size={24} color="#ffffff" />
+            {blockedUsers.length > 0 && (
+              <View style={styles.blockBadge}>
+                <Text style={styles.blockBadgeText}>{blockedUsers.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        {/* Search Bar inside Header */}
+        <View style={styles.searchContainerInHeader}>
+          <View style={styles.searchIconContainer}>
+            <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+          </View>
+          <TextInput
+            style={styles.searchInputInHeader}
+            placeholder="Search by name, role, or email..."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              style={styles.clearSearchButton}
+            >
+              <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+      
       <ScrollView
         style={styles.scrollView}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.colors.text }]}>
-              Manage Users
+          {/* All Users Header */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              All Users
             </Text>
             <TouchableOpacity
               style={[styles.addButton, { backgroundColor: theme.colors.primary }]}
               onPress={openCreateModal}
             >
-              <Text style={styles.addButtonText}>+ Add User</Text>
+              <Ionicons name="add" size={20} color="#ffffff" style={styles.addIcon} />
+              <Text style={styles.addButtonText}>Add User</Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={[
-                styles.searchInput,
-                {
-                  backgroundColor: theme.colors.surface,
-                  color: theme.colors.text,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-              placeholder="Search by name, email, role, or department..."
-              placeholderTextColor={theme.colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setSearchQuery('')}
-                style={styles.clearSearchButton}
-              >
-                <Text style={[styles.clearSearchText, { color: theme.colors.textSecondary }]}>
-                  ✕
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           {loading && !refreshing && (
@@ -331,7 +406,7 @@ export default function UserManagementScreen() {
 
           {filteredUsers.map((userItem) => (
             <Card key={userItem._id} style={styles.userCard}>
-              <View style={styles.userHeader}>
+              <View style={styles.userCardContent}>
                 <View style={styles.userInfo}>
                   <Text style={[styles.userName, { color: theme.colors.text }]}>
                     {userItem.name}
@@ -340,19 +415,54 @@ export default function UserManagementScreen() {
                     {userItem.email}
                   </Text>
                   <View style={styles.userMeta}>
-                    <Text
+                    <View
                       style={[
                         styles.roleBadge,
                         {
-                          color: getRoleColor(userItem.role),
-                          backgroundColor: getRoleColor(userItem.role) + '20',
+                          backgroundColor: 
+                            userItem.role === 'DIRECTOR' || userItem.role === 'PROFESSOR'
+                              ? getRoleColor(userItem.role)
+                              : getRoleColor(userItem.role) + '20',
                         },
                       ]}
                     >
-                      {userItem.role}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.roleBadgeText,
+                          {
+                            color: getRoleTextColor(userItem.role),
+                          },
+                        ]}
+                      >
+                        {userItem.role}
+                      </Text>
+                    </View>
                     <Text style={[styles.departmentText, { color: theme.colors.textSecondary }]}>
                       • {userItem.department}
+                    </Text>
+                  </View>
+                  <View style={styles.statusContainer}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor: userItem.isActive
+                            ? theme.colors.success
+                            : theme.colors.textSecondary,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.statusText,
+                        {
+                          color: userItem.isActive
+                            ? theme.colors.success
+                            : theme.colors.textSecondary,
+                        },
+                      ]}
+                    >
+                      {userItem.isActive ? 'Active' : 'Offline'}
                     </Text>
                   </View>
                 </View>
@@ -361,6 +471,7 @@ export default function UserManagementScreen() {
                     style={[styles.actionButton, { backgroundColor: theme.colors.info + '20' }]}
                     onPress={() => openEditModal(userItem)}
                   >
+                    <Ionicons name="pencil" size={16} color={theme.colors.info} />
                     <Text style={[styles.actionButtonText, { color: theme.colors.info }]}>
                       Edit
                     </Text>
@@ -369,40 +480,24 @@ export default function UserManagementScreen() {
                     style={[
                       styles.actionButton,
                       {
-                        backgroundColor: userItem.isActive
-                          ? theme.colors.error + '20'
-                          : theme.colors.success + '20',
+                        backgroundColor: theme.colors.error + '20',
                       },
                     ]}
                     onPress={() => handleToggleStatus(userItem)}
                   >
+                    <Ionicons name="ban" size={16} color={theme.colors.error} />
                     <Text
                       style={[
                         styles.actionButtonText,
                         {
-                          color: userItem.isActive ? theme.colors.error : theme.colors.success,
+                          color: theme.colors.error,
                         },
                       ]}
                     >
-                      {userItem.isActive ? 'Block' : 'Activate'}
+                      Block
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-              <View style={styles.userFooter}>
-                <Text
-                  style={[
-                    styles.statusBadge,
-                    {
-                      color: userItem.isActive ? theme.colors.success : theme.colors.textSecondary,
-                      backgroundColor: userItem.isActive
-                        ? theme.colors.success + '20'
-                        : theme.colors.textSecondary + '20',
-                    },
-                  ]}
-                >
-                  {userItem.isActive ? 'Active' : 'Blocked'}
-                </Text>
               </View>
             </Card>
           ))}
@@ -425,6 +520,7 @@ export default function UserManagementScreen() {
         animationType="slide"
         transparent={true}
         onRequestClose={() => setModalVisible(false)}
+        statusBarTranslucent={true}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
@@ -432,12 +528,15 @@ export default function UserManagementScreen() {
               <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
                 {editingUser ? 'Edit User' : 'Create User'}
               </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Text style={[styles.modalClose, { color: theme.colors.textSecondary }]}>✕</Text>
+              <TouchableOpacity 
+                onPress={() => setModalVisible(false)}
+                style={styles.modalClose}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <Input
                 label="Name *"
                 value={formData.name}
@@ -458,23 +557,90 @@ export default function UserManagementScreen() {
                 required
               />
 
-              <Input
-                label={editingUser ? 'Password (leave blank to keep current)' : 'Password *'}
-                value={formData.password}
-                onChangeText={(text) => setFormData({ ...formData, password: text })}
-                placeholder="Enter password"
-                secureTextEntry
-                error={errors.password}
-                required={!editingUser}
-              />
+              {/* Password Field with Toggle */}
+              <View style={styles.passwordSection}>
+                <View style={styles.passwordLabelRow}>
+                  <Text style={[styles.passwordLabel, { color: theme.colors.text }]}>
+                    Password
+                  </Text>
+                  {editingUser && (
+                    <View style={styles.changePasswordRow}>
+                      <Text style={[styles.changePasswordText, { color: theme.colors.text, marginRight: 10 }]}>
+                        Change Password
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setChangePassword(!changePassword);
+                          if (!changePassword) {
+                            setFormData({ ...formData, password: '' });
+                          }
+                        }}
+                        style={[
+                          styles.toggleSwitch,
+                          changePassword && { backgroundColor: theme.colors.primary },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.toggleThumb,
+                            changePassword && styles.toggleThumbActive,
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+                {(changePassword || !editingUser) && (
+                  <View>
+                    <View style={styles.passwordInputContainer}>
+                      <TextInput
+                        style={[
+                          styles.passwordInput,
+                          {
+                            borderColor: errors.password ? theme.colors.error : theme.colors.border,
+                            color: theme.colors.text,
+                          },
+                        ]}
+                        value={formData.password}
+                        onChangeText={(text) => setFormData({ ...formData, password: text })}
+                        placeholder={editingUser ? 'Enter new password' : 'Enter password'}
+                        placeholderTextColor={theme.colors.textSecondary}
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowPassword(!showPassword)}
+                        style={styles.eyeIcon}
+                      >
+                        <Ionicons
+                          name={showPassword ? 'eye-off' : 'eye'}
+                          size={20}
+                          color={theme.colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {errors.password && (
+                      <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                        {errors.password}
+                      </Text>
+                    )}
+                    {editingUser && changePassword && (
+                      <Text style={[styles.passwordHint, { color: theme.colors.textSecondary }]}>
+                        Leave blank to keep current password.
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
 
               <Picker
                 label="Role *"
                 selectedValue={formData.role}
                 onValueChange={(value) => setFormData({ ...formData, role: value })}
                 items={[
-                  { label: 'Employee', value: 'EMPLOYEE' },
+                  { label: 'Director', value: 'DIRECTOR' },
                   { label: 'Head of Department (HOD)', value: 'HOD' },
+                  { label: 'Employee', value: 'EMPLOYEE' },
                 ]}
                 placeholder="Select role"
                 error={errors.role}
@@ -491,24 +657,129 @@ export default function UserManagementScreen() {
                 required
               />
 
-              {editingUser && (
-                <Picker
-                  label="Status"
-                  selectedValue={formData.isActive ? 'Active' : 'Blocked'}
-                  onValueChange={(value) => setFormData({ ...formData, isActive: value === 'Active' })}
-                  items={[
-                    { label: 'Active', value: 'Active' },
-                    { label: 'Blocked', value: 'Blocked' },
-                  ]}
-                  placeholder="Select status"
-                />
-              )}
-
               <Button
                 title={editingUser ? 'Update User' : 'Create User'}
                 onPress={handleSave}
                 style={styles.saveButton}
               />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Blocked Users Modal */}
+      <Modal
+        visible={showBlockedUsersModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowBlockedUsersModal(false)}
+        statusBarTranslucent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                Blocked Users ({blockedUsers.length})
+              </Text>
+              <TouchableOpacity 
+                onPress={() => setShowBlockedUsersModal(false)}
+                style={styles.modalClose}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {blockedUsers.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                    No blocked users
+                  </Text>
+                </View>
+              ) : (
+                blockedUsers.map((userItem) => (
+                  <Card key={userItem._id} style={styles.userCard}>
+                    <View style={styles.userCardContent}>
+                      <View style={styles.userInfo}>
+                        <Text style={[styles.userName, { color: theme.colors.text }]}>
+                          {userItem.name}
+                        </Text>
+                        <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}>
+                          {userItem.email}
+                        </Text>
+                        <View style={styles.userMeta}>
+                          <View
+                            style={[
+                              styles.roleBadge,
+                              {
+                                backgroundColor: 
+                                  userItem.role === 'DIRECTOR' || userItem.role === 'PROFESSOR'
+                                    ? getRoleColor(userItem.role)
+                                    : getRoleColor(userItem.role) + '20',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.roleBadgeText,
+                                {
+                                  color: getRoleTextColor(userItem.role),
+                                },
+                              ]}
+                            >
+                              {userItem.role}
+                            </Text>
+                          </View>
+                          <Text style={[styles.departmentText, { color: theme.colors.textSecondary }]}>
+                            • {userItem.department}
+                          </Text>
+                        </View>
+                        <View style={styles.statusContainer}>
+                          <View
+                            style={[
+                              styles.statusDot,
+                              {
+                                backgroundColor: theme.colors.textSecondary,
+                              },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.statusText,
+                              {
+                                color: theme.colors.textSecondary,
+                              },
+                            ]}
+                          >
+                            Blocked
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButton,
+                          {
+                            backgroundColor: theme.colors.success + '20',
+                          },
+                        ]}
+                        onPress={() => handleUnblock(userItem)}
+                      >
+                        <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />
+                        <Text
+                          style={[
+                            styles.actionButtonText,
+                            {
+                              color: theme.colors.success,
+                            },
+                          ]}
+                        >
+                          Unblock
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Card>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>
@@ -520,137 +791,369 @@ export default function UserManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  topBarContainer: {
+    backgroundColor: '#6366f1',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    paddingBottom: 20,
+    ...{
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+  },
+  topBar: {
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    padding: 4,
+  },
+  backButtonPlaceholder: {
+    width: 32,
+  },
+  topBarTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#ffffff',
+    flex: 1,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  blockIconButton: {
+    padding: 4,
+    position: 'relative',
+  },
+  blockBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#6366f1',
+  },
+  blockBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  searchContainerInHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    ...{
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+  },
+  searchIconContainer: {
+    marginRight: 12,
+  },
+  searchInputInHeader: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1e293b',
+    padding: 0,
+  },
+  clearSearchButton: {
+    marginLeft: 8,
+    padding: 4,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 20,
   },
-  header: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  title: {
+  sectionTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   addButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 16,
+    ...{
+      shadowColor: '#6366f1',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+  },
+  addIcon: {
+    marginRight: 6,
   },
   addButtonText: {
     color: '#ffffff',
     fontWeight: '600',
+    fontSize: 14,
   },
   loadingText: {
     textAlign: 'center',
     marginTop: 32,
   },
   userCard: {
-    marginBottom: 12,
+    marginBottom: 16,
+    padding: 20,
   },
-  userHeader: {
+  userCardContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
   },
   userInfo: {
     flex: 1,
-    marginRight: 8,
+    marginRight: 16,
   },
   userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 6,
+    letterSpacing: -0.2,
   },
   userEmail: {
     fontSize: 14,
-    marginBottom: 8,
+    marginBottom: 12,
+    color: '#64748b',
   },
   userMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
+    marginBottom: 12,
   },
   roleBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  departmentText: {
-    fontSize: 12,
-  },
-  userActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 12,
+    marginRight: 10,
+  },
+  roleBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  departmentText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  userActions: {
+    flexDirection: 'column',
+    gap: 10,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 80,
+    justifyContent: 'center',
   },
   actionButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-  },
-  userFooter: {
-    marginTop: 8,
-  },
-  statusBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
+    marginLeft: 6,
   },
   emptyContainer: {
-    padding: 32,
+    padding: 48,
     alignItems: 'center',
   },
   emptyText: {
     fontSize: 16,
+    color: '#64748b',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
+    width: '100%',
+    height: '100%',
   },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
-    paddingBottom: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '90%',
+    paddingBottom: 32,
+    backgroundColor: '#ffffff',
+    ...{
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: -4,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 12,
+    },
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#e2e8f0',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    color: '#1e293b',
   },
   modalClose: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
-    padding: 16,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+  },
+  passwordSection: {
+    marginBottom: 20,
+  },
+  passwordLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  passwordLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  changePasswordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  changePasswordText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#cbd5e1',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    ...{
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 20 }],
+  },
+  passwordInputContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingRight: 48,
+    fontSize: 16,
+    minHeight: 52,
+    backgroundColor: '#ffffff',
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 16,
+    padding: 4,
+  },
+  passwordHint: {
+    fontSize: 12,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  errorText: {
+    fontSize: 12,
+    marginTop: 6,
+    fontWeight: '500',
   },
   saveButton: {
     marginTop: 8,
+    marginBottom: 8,
   },
   searchContainer: {
     marginBottom: 16,
@@ -664,15 +1167,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingRight: 40,
   },
-  clearSearchButton: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    padding: 4,
-  },
   clearSearchText: {
     fontSize: 18,
     fontWeight: 'bold',
   },
 });
+
 

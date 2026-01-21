@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
 const screenWidth = Dimensions.get('window').width;
-const chartWidth = screenWidth - 64; // Account for padding
 const maxBarHeight = 180;
+const yAxisWidth = 28;
 
 export default function BarChart({ data, labels }) {
   const theme = useTheme();
@@ -14,21 +14,49 @@ export default function BarChart({ data, labels }) {
   
   // Colors for each bar
   const barColors = [
-    theme.colors.primary || '#6366f1',      // Pending
-    theme.colors.info || '#3b82f6',         // In Progress
-    '#10b981',                              // Completed (green)
-    theme.colors.error || '#ef4444',        // Cancelled
+    '#6366f1',      // Pending - purple
+    '#3b82f6',      // In Progress - blue
+    '#10b981',      // Completed - green
+    '#ef4444',      // Cancelled - red
   ];
+
+  // Calculate Y-axis values (0, 3, 6, 9, 12 or similar based on maxValue)
+  const getYAxisValues = () => {
+    if (maxValue === 0) return [0, 3, 6, 9, 12];
+    const step = Math.ceil(maxValue / 4);
+    const values = [];
+    for (let i = 0; i <= 4; i++) {
+      values.push(i * step);
+    }
+    return values;
+  };
+
+  const yAxisValues = getYAxisValues();
+  const maxYValue = yAxisValues[yAxisValues.length - 1] || 12;
+  const segmentHeight = maxBarHeight / 4; // Each Y-axis segment height
 
   return (
     <View style={styles.container}>
       <View style={styles.chartContainer}>
         {/* Y-axis labels */}
         <View style={styles.yAxisContainer}>
-          {[0, 25, 50, 75, 100].map((percent) => {
-            const value = Math.round((maxValue * percent) / 100);
+          {yAxisValues.slice().reverse().map((value, idx) => {
+            // Position label at the exact Y position (0 at bottom, maxYValue at top)
+            // For value 0, position at bottom (0)
+            // For value maxYValue, position at top (maxBarHeight)
+            const labelPosition = maxYValue > 0 ? (value / maxYValue) * maxBarHeight : 0;
             return (
-              <View key={percent} style={styles.yAxisLabelContainer}>
+              <View 
+                key={idx} 
+                style={[
+                  styles.yAxisLabelContainer,
+                  { 
+                    position: 'absolute',
+                    bottom: labelPosition - 6, // Adjust for text centering
+                    right: 0,
+                  }
+                ]}
+              >
                 <Text style={[styles.yAxisLabel, { color: theme.colors.textSecondary }]}>
                   {value}
                 </Text>
@@ -40,32 +68,48 @@ export default function BarChart({ data, labels }) {
         {/* Bars */}
         <View style={styles.barsContainer}>
           {data.map((value, index) => {
-            const barHeight = maxValue > 0 ? (value / maxValue) * maxBarHeight : 0;
-            const percentage = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0;
+            // Calculate bar height to match Y-axis scale
+            const barHeight = maxYValue > 0 ? (value / maxYValue) * maxBarHeight : 0;
+            const barColor = barColors[index] || theme.colors.primary;
+            const goalHeight = maxBarHeight; // Full height for goal
+            const actualHeight = barHeight;
+            const goalTopHeight = goalHeight - actualHeight; // Light gray top portion
             
             return (
               <View key={index} style={styles.barWrapper}>
-                <View style={styles.barContainer}>
-                  {/* Bar */}
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: barHeight,
-                        backgroundColor: barColors[index] || theme.colors.primary,
-                      },
-                    ]}
-                  >
-                    {/* Value label on top of bar */}
-                    {value > 0 && (
-                      <Text style={styles.barValue}>{value}</Text>
+                <View style={[styles.barContainer, { height: maxBarHeight }]}>
+                  {/* Bar with two sections */}
+                  <View style={[styles.barStack, { height: maxBarHeight }]}>
+                    {/* Top section (light gray - goal) */}
+                    {goalTopHeight > 0 && (
+                      <View
+                        style={[
+                          styles.barTop,
+                          {
+                            height: goalTopHeight,
+                            backgroundColor: '#e2e8f0',
+                          },
+                        ]}
+                      />
+                    )}
+                    {/* Bottom section (colored - actual value) */}
+                    {actualHeight > 0 && (
+                      <View
+                        style={[
+                          styles.barBottom,
+                          {
+                            height: actualHeight,
+                            backgroundColor: barColor,
+                          },
+                        ]}
+                      />
                     )}
                   </View>
                 </View>
                 {/* X-axis label */}
                 <Text
-                  style={[styles.xAxisLabel, { color: theme.colors.text }]}
-                  numberOfLines={2}
+                  style={[styles.xAxisLabel, { color: theme.colors.textSecondary }]}
+                  numberOfLines={1}
                 >
                   {labels[index]}
                 </Text>
@@ -81,64 +125,72 @@ export default function BarChart({ data, labels }) {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   chartContainer: {
     flexDirection: 'row',
-    height: maxBarHeight + 60, // Bar height + labels
+    height: maxBarHeight + 40,
+    alignItems: 'flex-start',
   },
   yAxisContainer: {
-    width: 40,
-    justifyContent: 'space-between',
-    paddingRight: 8,
-    paddingTop: 20,
+    width: yAxisWidth,
+    height: maxBarHeight,
+    position: 'relative',
+    paddingRight: 6,
   },
   yAxisLabelContainer: {
-    height: maxBarHeight / 4,
-    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   yAxisLabel: {
-    fontSize: 10,
+    fontSize: 11,
     textAlign: 'right',
+    fontWeight: '500',
+    lineHeight: 14,
   },
   barsContainer: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-end',
-    paddingBottom: 40,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingLeft: 8,
+    paddingRight: 4,
+    height: maxBarHeight,
   },
   barWrapper: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginHorizontal: 4,
+    justifyContent: 'flex-start',
+    marginHorizontal: 3,
+    height: maxBarHeight + 32,
   },
   barContainer: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    marginBottom: 8,
     height: maxBarHeight,
   },
-  bar: {
-    width: '80%',
-    minHeight: 4,
-    borderRadius: 4,
+  barStack: {
+    width: '70%',
+    borderRadius: 6,
+    overflow: 'hidden',
     justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingBottom: 4,
   },
-  barValue: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginBottom: 2,
+  barTop: {
+    width: '100%',
+  },
+  barBottom: {
+    width: '100%',
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
   },
   xAxisLabel: {
-    fontSize: 10,
+    fontSize: 11,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 0,
     fontWeight: '500',
+    lineHeight: 14,
   },
 });
 

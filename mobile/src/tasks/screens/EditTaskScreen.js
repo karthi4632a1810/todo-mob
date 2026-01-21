@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { updateTask, fetchTaskById } from '../../store/slices/taskSlice';
 import Button from '../../common/components/Button';
 import Input from '../../common/components/Input';
@@ -113,10 +114,18 @@ export default function EditTaskScreen() {
   }
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-    >
-      <View style={styles.content}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Top Bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#ffffff" />
+        </TouchableOpacity>
+        <Text style={styles.topBarTitle}>Edit Task</Text>
+        <View style={styles.backButtonPlaceholder} />
+      </View>
+      
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
         <Input
           label="Title *"
           value={formData.title}
@@ -182,12 +191,38 @@ export default function EditTaskScreen() {
           style={styles.button}
         />
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  topBar: {
+    backgroundColor: '#6200ee',
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    padding: 4,
+  },
+  backButtonPlaceholder: {
+    width: 32,
+  },
+  topBarTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    flex: 1,
+    textAlign: 'center',
+  },
+  scrollView: {
     flex: 1,
   },
   content: {

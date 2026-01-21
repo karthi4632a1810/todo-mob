@@ -198,5 +198,11 @@ export const diaryAPI = {
   deleteDiary: (id) => apiClient.delete(`/diary/${id}`),
 };
 
+// Notification API
+export const notificationAPI = {
+  getNotifications: (params) => apiClient.get('/notifications', { params }),
+  markAsRead: (notificationId) => apiClient.post(`/notifications/${notificationId}/read`),
+};
+
 export default apiClient;
 

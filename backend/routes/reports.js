@@ -57,16 +57,33 @@ router.get('/stats', authRequired, async (req, res) => {
       });
     }
 
-    // Add date range filter if provided (filter by createdAt)
+    // Add date range filter if provided
+    // If filterByDueDate is true, filter by dueDate; otherwise filter by createdAt
+    const filterByDueDate = req.query.filterByDueDate === 'true';
+    
     if (fromDate || toDate) {
-      query.createdAt = {};
-      if (fromDate) {
-        fromDate.setHours(0, 0, 0, 0);
-        query.createdAt.$gte = fromDate;
-      }
-      if (toDate) {
-        toDate.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = toDate;
+      if (filterByDueDate) {
+        // Filter by due date for task cards and statistics
+        query.dueDate = {};
+        if (fromDate) {
+          fromDate.setHours(0, 0, 0, 0);
+          query.dueDate.$gte = fromDate;
+        }
+        if (toDate) {
+          toDate.setHours(23, 59, 59, 999);
+          query.dueDate.$lte = toDate;
+        }
+      } else {
+        // Filter by creation date (default behavior)
+        query.createdAt = {};
+        if (fromDate) {
+          fromDate.setHours(0, 0, 0, 0);
+          query.createdAt.$gte = fromDate;
+        }
+        if (toDate) {
+          toDate.setHours(23, 59, 59, 999);
+          query.createdAt.$lte = toDate;
+        }
       }
     }
 

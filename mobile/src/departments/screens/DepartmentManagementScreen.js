@@ -12,10 +12,13 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { departmentAPI } from '../../services/api';
 import Card from '../../common/components/Card';
 import Input from '../../common/components/Input';
 import Button from '../../common/components/Button';
+import TopBar from '../../common/components/TopBar';
+import FloatingActionButton from '../../common/components/FloatingActionButton';
 import { useTheme } from '../../common/theme/ThemeContext';
 
 export default function DepartmentManagementScreen() {
@@ -24,6 +27,7 @@ export default function DepartmentManagementScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -55,6 +59,9 @@ export default function DepartmentManagementScreen() {
     try {
       const response = await departmentAPI.getDepartments();
       const depts = response.data.data.departments || response.data.departments || [];
+      // Log for debugging
+      console.log('Loaded departments:', depts.length);
+      console.log('Inactive departments:', depts.filter(d => d.isActive === false || d.isActive === 'false').length);
       setDepartments(depts);
     } catch (error) {
       // Don't log 401 errors - they're handled by the interceptor
@@ -155,25 +162,84 @@ export default function DepartmentManagementScreen() {
     );
   };
 
-  // Filter departments based on search query
+  const handleToggleActive = async (department) => {
+    // Determine current status - treat undefined/null as active
+    const currentStatus = department.isActive === false || department.isActive === 'false' ? false : true;
+    const newStatus = !currentStatus;
+    const action = newStatus ? 'activate' : 'block';
+    
+    Alert.alert(
+      `${action.charAt(0).toUpperCase() + action.slice(1)} Department`,
+      `Are you sure you want to ${action} "${department.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action.charAt(0).toUpperCase() + action.slice(1),
+          onPress: async () => {
+            try {
+              const updateData = { isActive: newStatus };
+              console.log('Updating department:', department._id, 'with data:', updateData);
+              const response = await departmentAPI.updateDepartment(department._id, updateData);
+              console.log('Update response:', response.data);
+              
+              // Reload departments first
+              await loadDepartments();
+              
+              // If blocking, switch to inactive view to show the blocked department
+              if (!newStatus) {
+                setShowInactiveOnly(true);
+              }
+              
+              Alert.alert('Success', `Department ${action === 'block' ? 'blocked' : 'activated'} successfully`);
+            } catch (error) {
+              let errorMessage = `Failed to ${action} department`;
+              if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+              }
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Filter departments based on search query and inactive filter
   const filteredDepartments = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return departments;
+    let filtered = departments;
+    
+    // Filter by inactive status
+    if (showInactiveOnly) {
+      // Show only departments where isActive is explicitly false
+      filtered = filtered.filter(dept => dept.isActive === false || dept.isActive === 'false');
+    } else {
+      // Show only active departments (isActive is true, undefined, or null)
+      filtered = filtered.filter(dept => dept.isActive !== false && dept.isActive !== 'false');
     }
     
-    const query = searchQuery.toLowerCase().trim();
-    return departments.filter(dept => {
-      const name = (dept.name || '').toLowerCase();
-      const code = (dept.code || '').toLowerCase();
-      const description = (dept.description || '').toLowerCase();
-      
-      return (
-        name.includes(query) ||
-        code.includes(query) ||
-        description.includes(query)
-      );
-    });
-  }, [departments, searchQuery]);
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(dept => {
+        const name = (dept.name || '').toLowerCase();
+        const code = (dept.code || '').toLowerCase();
+        const description = (dept.description || '').toLowerCase();
+        
+        return (
+          name.includes(query) ||
+          code.includes(query) ||
+          description.includes(query)
+        );
+      });
+    }
+    
+    return filtered;
+  }, [departments, searchQuery, showInactiveOnly]);
+
+  // Count inactive departments
+  const inactiveCount = useMemo(() => {
+    return departments.filter(d => d.isActive === false || d.isActive === 'false').length;
+  }, [departments]);
 
   if (user?.role !== 'DIRECTOR') {
     return null;
@@ -181,35 +247,62 @@ export default function DepartmentManagementScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Top Bar */}
+      <TopBar 
+        title="Manage Departments" 
+        rightComponent={
+          <TouchableOpacity
+            onPress={() => setShowInactiveOnly(!showInactiveOnly)}
+            style={[styles.inactiveButton, showInactiveOnly && styles.inactiveButtonActive]}
+          >
+            <Ionicons 
+              name="ban" 
+              size={24} 
+              color={showInactiveOnly ? "#ffffff" : "#ffffff"} 
+            />
+            {inactiveCount > 0 && (
+              <View style={styles.inactiveBadge}>
+                <Text style={styles.inactiveBadgeText}>
+                  {inactiveCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        }
+      />
+      
       <ScrollView
         style={styles.scrollView}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.colors.text }]}>
-              Manage Departments
+          {/* Department List Header */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Department List
             </Text>
             <TouchableOpacity
               style={[styles.addButton, { backgroundColor: theme.colors.primary }]}
               onPress={openCreateModal}
             >
-              <Text style={styles.addButtonText}>+ Add</Text>
+              <Ionicons name="add" size={18} color="#ffffff" style={styles.addIcon} />
+              <Text style={styles.addButtonText}>Add New</Text>
             </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
           <View style={styles.searchContainer}>
+            <View style={styles.searchIconContainer}>
+              <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+            </View>
             <TextInput
               style={[
                 styles.searchInput,
                 {
-                  backgroundColor: theme.colors.surface,
                   color: theme.colors.text,
-                  borderColor: theme.colors.border,
                 },
               ]}
-              placeholder="Search by name, code, or description..."
+              placeholder="Search by name, code..."
               placeholderTextColor={theme.colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -221,9 +314,7 @@ export default function DepartmentManagementScreen() {
                 onPress={() => setSearchQuery('')}
                 style={styles.clearSearchButton}
               >
-                <Text style={[styles.clearSearchText, { color: theme.colors.textSecondary }]}>
-                  ✕
-                </Text>
+                <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -236,65 +327,106 @@ export default function DepartmentManagementScreen() {
 
           {filteredDepartments.map((dept) => (
             <Card key={dept._id} style={styles.departmentCard}>
-              <View style={styles.departmentHeader}>
+              <View style={styles.departmentCardContent}>
                 <View style={styles.departmentInfo}>
-                  <Text style={[styles.departmentName, { color: theme.colors.text }]}>
-                    {dept.name}
-                  </Text>
-                  {dept.code && (
-                    <Text style={[styles.departmentCode, { color: theme.colors.textSecondary }]}>
-                      ({dept.code})
-                    </Text>
-                  )}
+                  <View style={styles.departmentHeaderRow}>
+                    <View style={styles.departmentNameContainer}>
+                      <Text style={[styles.departmentName, { color: theme.colors.text }]}>
+                        {dept.name}
+                      </Text>
+                      {dept.code && (
+                        <Text style={[styles.departmentCode, { color: theme.colors.textSecondary }]}>
+                          ({dept.code})
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.statusContainer}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          {
+                            backgroundColor: (dept.isActive === false || dept.isActive === 'false')
+                              ? theme.colors.textSecondary
+                              : theme.colors.success,
+                          },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.statusText,
+                          {
+                            color: (dept.isActive === false || dept.isActive === 'false')
+                              ? theme.colors.textSecondary
+                              : theme.colors.success,
+                          },
+                        ]}
+                      >
+                        {(dept.isActive === false || dept.isActive === 'false') ? 'Inactive' : 'Active'}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
                 <View style={styles.departmentActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: theme.colors.info + '20' }]}
-                    onPress={() => openEditModal(dept)}
-                  >
-                    <Text style={[styles.actionButtonText, { color: theme.colors.info }]}>
-                      Edit
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: theme.colors.error + '20' }]}
-                    onPress={() => handleDelete(dept)}
-                  >
-                    <Text style={[styles.actionButtonText, { color: theme.colors.error }]}>
-                      Delete
-                    </Text>
-                  </TouchableOpacity>
+                  {showInactiveOnly ? (
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: theme.colors.success + '20' }]}
+                      onPress={() => handleToggleActive(dept)}
+                    >
+                      <Text style={[styles.actionButtonText, { color: theme.colors.success }]}>
+                        Activate
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: theme.colors.info + '20', marginRight: 10 }]}
+                        onPress={() => openEditModal(dept)}
+                      >
+                        <Text style={[styles.actionButtonText, { color: theme.colors.info }]}>
+                          Edit
+                        </Text>
+                      </TouchableOpacity>
+                      {(dept.isActive !== false && dept.isActive !== 'false') && (
+                        <TouchableOpacity
+                          style={[styles.actionButton, { backgroundColor: '#f59e0b' + '20', marginRight: 10 }]}
+                          onPress={() => handleToggleActive(dept)}
+                        >
+                          <Text style={[styles.actionButtonText, { color: '#f59e0b' }]}>
+                            Block
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: theme.colors.error + '20' }]}
+                        onPress={() => handleDelete(dept)}
+                      >
+                        <Text style={[styles.actionButtonText, { color: theme.colors.error }]}>
+                          Delete
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
-              </View>
-              {dept.description && (
-                <Text style={[styles.departmentDescription, { color: theme.colors.textSecondary }]}>
-                  {dept.description}
-                </Text>
-              )}
-              <View style={styles.departmentFooter}>
-                <Text
-                  style={[
-                    styles.statusBadge,
-                    {
-                      color: dept.isActive ? theme.colors.success : theme.colors.textSecondary,
-                      backgroundColor: dept.isActive
-                        ? theme.colors.success + '20'
-                        : theme.colors.textSecondary + '20',
-                    },
-                  ]}
-                >
-                  {dept.isActive ? 'Active' : 'Inactive'}
-                </Text>
               </View>
             </Card>
           ))}
 
           {!loading && filteredDepartments.length === 0 && (
             <View style={styles.emptyContainer}>
+              <Ionicons 
+                name={showInactiveOnly ? "ban" : "business"} 
+                size={64} 
+                color={theme.colors.textSecondary} 
+                style={styles.emptyIcon}
+              />
               <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                {searchQuery.trim() 
-                  ? `No departments found matching "${searchQuery}"` 
-                  : 'No departments found'}
+                {showInactiveOnly
+                  ? searchQuery.trim()
+                    ? `No inactive departments found matching "${searchQuery}"`
+                    : 'No inactive departments found'
+                  : searchQuery.trim()
+                    ? `No departments found matching "${searchQuery}"`
+                    : 'No departments found'}
               </Text>
             </View>
           )}
@@ -307,6 +439,7 @@ export default function DepartmentManagementScreen() {
         animationType="slide"
         transparent={true}
         onRequestClose={() => setModalVisible(false)}
+        statusBarTranslucent={true}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
@@ -314,12 +447,15 @@ export default function DepartmentManagementScreen() {
               <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
                 {editingDepartment ? 'Edit Department' : 'Create Department'}
               </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Text style={[styles.modalClose, { color: theme.colors.textSecondary }]}>✕</Text>
+              <TouchableOpacity 
+                onPress={() => setModalVisible(false)}
+                style={styles.modalClose}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <Input
                 label="Department Name *"
                 value={formData.name}
@@ -356,6 +492,14 @@ export default function DepartmentManagementScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Floating Action Button */}
+      {!showInactiveOnly && (
+        <FloatingActionButton
+          onPress={openCreateModal}
+          icon="add"
+        />
+      )}
     </View>
   );
 }
@@ -363,146 +507,245 @@ export default function DepartmentManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f8fafc',
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: 20,
   },
-  header: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  title: {
+  sectionTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   addButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 16,
+    ...{
+      shadowColor: '#6366f1',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+  },
+  addIcon: {
+    marginRight: 6,
   },
   addButtonText: {
     color: '#ffffff',
     fontWeight: '600',
+    fontSize: 14,
+  },
+  inactiveButton: {
+    padding: 8,
+    position: 'relative',
+  },
+  inactiveButtonActive: {
+    // No background color when active
+  },
+  inactiveBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  inactiveBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ef4444',
+  },
+  sectionTitleContainer: {
+    flex: 1,
+  },
+  inactiveCount: {
+    fontSize: 14,
+    marginTop: 4,
+    fontWeight: '400',
+  },
+  emptyIcon: {
+    marginBottom: 16,
+    opacity: 0.5,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 20,
+    ...{
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+  },
+  searchIconContainer: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    padding: 0,
+  },
+  clearSearchButton: {
+    marginLeft: 8,
+    padding: 4,
   },
   loadingText: {
     textAlign: 'center',
     marginTop: 32,
+    color: '#64748b',
   },
   departmentCard: {
-    marginBottom: 12,
+    marginBottom: 16,
+    padding: 20,
   },
-  departmentHeader: {
+  departmentCardContent: {
+    flexDirection: 'column',
+  },
+  departmentInfo: {
+    marginBottom: 16,
+  },
+  departmentHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
   },
-  departmentInfo: {
+  departmentNameContainer: {
     flex: 1,
-    marginRight: 8,
+    marginRight: 12,
   },
   departmentName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   departmentCode: {
-    fontSize: 12,
+    fontSize: 14,
+    color: '#64748b',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   departmentActions: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'flex-end',
   },
   actionButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 80,
+    alignItems: 'center',
   },
   actionButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-  },
-  departmentDescription: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  departmentFooter: {
-    marginTop: 8,
-  },
-  statusBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
   },
   emptyContainer: {
-    padding: 32,
+    padding: 48,
     alignItems: 'center',
   },
   emptyText: {
     fontSize: 16,
+    color: '#64748b',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
+    width: '100%',
+    height: '100%',
   },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
-    paddingBottom: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '90%',
+    paddingBottom: 32,
+    backgroundColor: '#ffffff',
+    ...{
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: -4,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 12,
+    },
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#e2e8f0',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    color: '#1e293b',
   },
   modalClose: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
-    padding: 16,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
   saveButton: {
     marginTop: 8,
-  },
-  searchContainer: {
-    marginBottom: 16,
-    position: 'relative',
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    paddingRight: 40,
-  },
-  clearSearchButton: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    padding: 4,
-  },
-  clearSearchText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    marginBottom: 8,
   },
 });
 

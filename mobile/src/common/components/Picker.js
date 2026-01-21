@@ -103,6 +103,7 @@ export default function Picker({
         transparent
         animationType="slide"
         onRequestClose={handleModalClose}
+        statusBarTranslucent={true}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
@@ -242,6 +243,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    width: '100%',
+    height: '100%',
   },
   modalContent: {
     borderTopLeftRadius: 20,
