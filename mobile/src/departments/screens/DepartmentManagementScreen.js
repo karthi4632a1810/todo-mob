@@ -11,7 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { departmentAPI } from '../../services/api';
 import Card from '../../common/components/Card';
@@ -22,6 +22,7 @@ import FloatingActionButton from '../../common/components/FloatingActionButton';
 import { useTheme } from '../../common/theme/ThemeContext';
 
 export default function DepartmentManagementScreen() {
+  const route = useRoute();
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,6 +54,22 @@ export default function DepartmentManagementScreen() {
       loadDepartments();
     }
   }, [user, isAuthenticated, token, navigation]);
+
+  // Handle route params to open specific department
+  useFocusEffect(
+    React.useCallback(() => {
+      const departmentId = route.params?.departmentId;
+      if (departmentId && departments.length > 0 && !editingDepartment) {
+        const deptToEdit = departments.find((d) => d._id === departmentId);
+        if (deptToEdit) {
+          // Small delay to ensure departments are loaded
+          setTimeout(() => {
+            openEditModal(deptToEdit);
+          }, 300);
+        }
+      }
+    }, [route.params?.departmentId, departments, editingDepartment])
+  );
 
   const loadDepartments = async () => {
     setLoading(true);

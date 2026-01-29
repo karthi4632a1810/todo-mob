@@ -11,7 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { userAPI } from '../../services/api';
 import { departmentAPI } from '../../services/api';
@@ -22,6 +22,7 @@ import Picker from '../../common/components/Picker';
 import { useTheme } from '../../common/theme/ThemeContext';
 
 export default function UserManagementScreen() {
+  const route = useRoute();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -60,6 +61,32 @@ export default function UserManagementScreen() {
       loadDepartments();
     }
   }, [user, isAuthenticated, token, navigation]);
+
+  // Handle route params to open specific user
+  useFocusEffect(
+    React.useCallback(() => {
+      const userId = route.params?.userId;
+      if (userId && users.length > 0 && !editingUser) {
+        const userToEdit = users.find((u) => u._id === userId);
+        if (userToEdit) {
+          // Small delay to ensure users are loaded
+          setTimeout(() => {
+            openEditModal(userToEdit);
+          }, 300);
+        } else {
+          // User not in current list, might be blocked - try to load
+          loadUsers().then(() => {
+            const userToEdit = users.find((u) => u._id === userId);
+            if (userToEdit) {
+              setTimeout(() => {
+                openEditModal(userToEdit);
+              }, 300);
+            }
+          });
+        }
+      }
+    }, [route.params?.userId, users, editingUser])
+  );
 
   const loadUsers = async () => {
     setLoading(true);

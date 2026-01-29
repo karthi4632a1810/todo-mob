@@ -371,6 +371,32 @@ export default function MainNavigator() {
             options={{ title: 'Reports' }}
           />
           <Tab.Screen 
+            name="Diary" 
+            component={DiaryStack}
+            options={{ 
+              title: 'Diary',
+              tabBarButton: () => null, // Hide from tab bar but keep navigable
+            }}
+          />
+          {canAccessApprovals && (
+            <Tab.Screen 
+              name="Approvals" 
+              component={ApprovalsStack}
+              options={{ 
+                title: 'Approvals',
+                tabBarButton: () => null, // Hide from tab bar but keep navigable
+              }}
+            />
+          )}
+          <Tab.Screen 
+            name="Notifications" 
+            component={NotificationsStack}
+            options={{ 
+              title: 'Notifications',
+              tabBarButton: () => null, // Hide from tab bar but keep navigable
+            }}
+          />
+          <Tab.Screen 
             name="Profile" 
             component={ProfileStack}
             options={{ title: 'Profile' }}
@@ -470,6 +496,14 @@ export default function MainNavigator() {
             options={{ title: 'Reports' }}
           />
         )}
+        <Tab.Screen 
+          name="Diary" 
+          component={DiaryStack}
+          options={{ 
+            title: 'Diary',
+            tabBarButton: () => null, // Hide from tab bar but keep navigable
+          }}
+        />
         <Tab.Screen 
           name="Profile" 
           component={ProfileStack}

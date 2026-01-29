@@ -15,7 +15,7 @@ import { useTheme } from '../../common/theme/ThemeContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-export default function TaskOptionsBottomSheet({ visible, onClose, task, user, onAction }) {
+export default function TaskOptionsBottomSheet({ visible, onClose, task, user, onAction, isFavorite = false }) {
   const theme = useTheme();
   const slideAnim = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
@@ -106,8 +106,8 @@ export default function TaskOptionsBottomSheet({ visible, onClose, task, user, o
     },
     {
       id: 'favorite',
-      label: 'Add to Favorites',
-      icon: 'star-outline',
+      label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+      icon: isFavorite ? 'star' : 'star-outline',
       color: '#fbbf24',
       available: true,
     },

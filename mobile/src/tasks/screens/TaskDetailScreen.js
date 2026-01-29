@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Share, Cli
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchTaskById, deleteTask, updateTaskProgress, createTask } from '../../store/slices/taskSlice';
 import { taskAPI, userAPI } from '../../services/api';
 import Button from '../../common/components/Button';
@@ -11,6 +12,8 @@ import Input from '../../common/components/Input';
 import Picker from '../../common/components/Picker';
 import TaskOptionsBottomSheet from '../components/TaskOptionsBottomSheet';
 import { useTheme } from '../../common/theme/ThemeContext';
+
+const FAVORITES_KEY = 'favoriteTasks';
 
 export default function TaskDetailScreen() {
   const dispatch = useDispatch();
@@ -36,6 +39,7 @@ export default function TaskDetailScreen() {
   const [transferUserId, setTransferUserId] = useState('');
   const [availableUsers, setAvailableUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   const isEmployee = user?.role === 'EMPLOYEE';
   const isDirector = user?.role === 'DIRECTOR';
@@ -72,6 +76,22 @@ export default function TaskDetailScreen() {
       setErrors({});
     }
   }, [currentTask, isEmployee]);
+
+  // Load favorite status
+  useEffect(() => {
+    const loadFavoriteStatus = async () => {
+      try {
+        const favoritesJson = await AsyncStorage.getItem(FAVORITES_KEY);
+        const favorites = favoritesJson ? JSON.parse(favoritesJson) : [];
+        setIsFavorite(favorites.includes(taskId));
+      } catch (error) {
+        console.error('Error loading favorite status:', error);
+      }
+    };
+    if (taskId) {
+      loadFavoriteStatus();
+    }
+  }, [taskId]);
 
   const handleEdit = () => {
     navigation.navigate('EditTask', { taskId });
@@ -418,14 +438,106 @@ export default function TaskDetailScreen() {
     });
   };
 
-  const handleAddToFavorites = () => {
-    // TODO: Implement favorites functionality when backend supports it
-    Alert.alert('Info', 'Favorites feature coming soon!');
+  const handleAddToFavorites = async () => {
+    try {
+      const favoritesJson = await AsyncStorage.getItem(FAVORITES_KEY);
+      const favorites = favoritesJson ? JSON.parse(favoritesJson) : [];
+      
+      let newFavorites;
+      let newIsFavorite;
+      
+      if (favorites.includes(taskId)) {
+        // Remove from favorites
+        newFavorites = favorites.filter(id => id !== taskId);
+        newIsFavorite = false;
+        Alert.alert('Success', 'Task removed from favorites');
+      } else {
+        // Add to favorites
+        newFavorites = [...favorites, taskId];
+        newIsFavorite = true;
+        Alert.alert('Success', 'Task added to favorites');
+      }
+      
+      await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavorites));
+      setIsFavorite(newIsFavorite);
+    } catch (error) {
+      console.error('Error updating favorites:', error);
+      Alert.alert('Error', 'Failed to update favorites');
+    }
   };
 
-  const handleExportPDF = () => {
-    // TODO: Implement PDF export functionality
-    Alert.alert('Info', 'PDF export feature coming soon!');
+  const handleExportPDF = async () => {
+    try {
+      if (!currentTask) {
+        Alert.alert('Error', 'Task data not available');
+        return;
+      }
+
+      // Format task details as a well-structured document
+      const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      };
+
+      const taskDocument = `
+═══════════════════════════════════════════════════════════
+                    TASK DETAILS REPORT
+═══════════════════════════════════════════════════════════
+
+TASK INFORMATION
+───────────────────────────────────────────────────────────
+Title:           ${currentTask.title || 'N/A'}
+Status:          ${currentTask.status || 'N/A'}
+Priority:        ${currentTask.priority || 'N/A'}
+Department:      ${currentTask.department || 'N/A'}
+
+ASSIGNMENT DETAILS
+───────────────────────────────────────────────────────────
+Assigned To:     ${currentTask.assignedTo?.name || 'N/A'}
+Assigned By:     ${currentTask.assignedBy?.name || 'N/A'}
+Created Date:     ${formatDate(currentTask.createdAt)}
+Start Date:      ${formatDate(currentTask.startDate)}
+Due Date:        ${formatDate(currentTask.dueDate)}
+
+${currentTask.description ? `DESCRIPTION
+───────────────────────────────────────────────────────────
+${currentTask.description}
+
+` : ''}${currentTask.updates && currentTask.updates.length > 0 ? `TASK UPDATES (${currentTask.updates.length})
+───────────────────────────────────────────────────────────
+${currentTask.updates.map((update, index) => `
+Update #${index + 1}
+  Status: ${update.status || 'N/A'}
+  Updated By: ${update.updatedBy?.name || 'N/A'}
+  Date: ${formatDate(update.updatedAt)}
+  Remarks: ${update.remarks || 'No remarks'}
+`).join('\n')}
+
+` : ''}═══════════════════════════════════════════════════════════
+Generated: ${new Date().toLocaleString()}
+═══════════════════════════════════════════════════════════
+      `.trim();
+
+      // Share the formatted document
+      const result = await Share.share({
+        message: taskDocument,
+        title: `Task: ${currentTask.title}`,
+      });
+
+      if (result.action === Share.sharedAction) {
+        Alert.alert('Success', 'Task details exported successfully');
+      }
+    } catch (error) {
+      console.error('Error exporting task:', error);
+      Alert.alert('Error', 'Failed to export task details');
+    }
   };
 
   // Check if user can edit/delete this task (for non-employees)
@@ -915,6 +1027,7 @@ export default function TaskDetailScreen() {
         task={currentTask}
         user={user}
         onAction={handleMenuAction}
+        isFavorite={isFavorite}
       />
 
       {/* Change Priority Modal */}

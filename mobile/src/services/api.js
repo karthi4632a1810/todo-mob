@@ -1,13 +1,13 @@
 import axios from 'axios';
 import { storage } from './storage';
 
-// API Base URL - Update this IP address if your computer's IP changes
+// API Base URL - Render deployment URL
 // For Expo, environment variables from .env may not load properly
 // You can also set EXPO_PUBLIC_API_URL in .env and restart Expo
-const API_BASE_URL = 'http://192.168.101.45:3000/api';
+const API_BASE_URL = 'https://todo-mob.onrender.com/api';
 
 // Alternative: Use environment variable if available
-// const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.101.45:3000/api';
+// const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://todo-mob.onrender.com/api';
 
 // Log API URL for debugging (only in development)
 if (__DEV__) {
@@ -28,7 +28,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 30000, // 30 second timeout (increased for Render deployments)
 });
 
 // Request interceptor to add JWT token

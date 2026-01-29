@@ -14,6 +14,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { diaryAPI } from '../../services/api';
@@ -49,6 +50,7 @@ const STORAGE_KEYS = {
 };
 
 export default function DiaryScreen() {
+  const route = useRoute();
   const { user, isAuthenticated, token } = useSelector((state) => state.auth);
   const [diaries, setDiaries] = useState([]);
   const [allDiariesForLabels, setAllDiariesForLabels] = useState([]);
@@ -116,6 +118,37 @@ export default function DiaryScreen() {
     }
   }, [user, isAuthenticated, token, searchQuery, selectedLabel, selectedColor, dateFilter, customDateRange, filterPinned]);
 
+  // Handle route params to open specific diary entry
+  useFocusEffect(
+    useCallback(() => {
+      const diaryId = route.params?.diaryId;
+      if (diaryId && diaries.length > 0) {
+        const diary = diaries.find((d) => d._id === diaryId);
+        if (diary && !editingNote) {
+          // Small delay to ensure diaries are loaded
+          setTimeout(() => {
+            openEditModal(diary);
+          }, 300);
+        } else if (diaryId && !diary) {
+          // Diary not in current list, fetch it
+          loadSpecificDiary(diaryId);
+        }
+      }
+    }, [route.params?.diaryId, diaries, editingNote])
+  );
+
+  const loadSpecificDiary = async (diaryId) => {
+    try {
+      const response = await diaryAPI.getDiaryById(diaryId);
+      const diary = response.data?.data?.diary || response.data?.diary;
+      if (diary) {
+        openEditModal(diary);
+      }
+    } catch (error) {
+      console.error('Error loading diary entry:', error);
+    }
+  };
+
   const loadCustomData = async () => {
     try {
       const [noteColors, labelColors, labels] = await Promise.all([
@@ -182,8 +215,7 @@ export default function DiaryScreen() {
   // Custom Slider Component
   const CustomSlider = ({ value, onValueChange, minimumValue = 0, maximumValue = 255, minimumTrackTintColor, maximumTrackTintColor, thumbTintColor, style }) => {
     const [sliderWidth, setSliderWidth] = useState(0);
-    const touchStartX = useRef(0);
-    const touchStartValue = useRef(value);
+    const touchAreaRef = useRef(null);
 
     const percentage = ((value - minimumValue) / (maximumValue - minimumValue)) * 100;
 
@@ -222,9 +254,12 @@ export default function DiaryScreen() {
             setSliderWidth(width);
           }
         }}
-        {...panResponder.panHandlers}
       >
-        <View style={styles.sliderTouchArea}>
+        <View 
+          ref={touchAreaRef}
+          style={styles.sliderTouchArea}
+          {...panResponder.panHandlers}
+        >
           <View style={[styles.sliderTrack, { backgroundColor: maximumTrackTintColor || '#e5e7eb' }]}>
             <View
               style={[
@@ -2349,23 +2384,47 @@ export default function DiaryScreen() {
                   maximumTrackTintColor="#fee2e2"
                   thumbTintColor="#ef4444"
                 />
-                <TextInput
-                  style={[styles.rgbInput, {
-                    backgroundColor: theme.colors.background,
-                    color: theme.colors.text,
-                    borderColor: theme.colors.border,
-                  }]}
-                  value={String(Math.round(rgbValues.r))}
-                  onChangeText={(text) => {
-                    const value = parseInt(text) || 0;
-                    const clampedValue = Math.max(0, Math.min(255, value));
-                    const newRgb = { ...rgbValues, r: clampedValue };
-                    setRgbValues(newRgb);
-                    setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
-                  }}
-                  keyboardType="numeric"
-                  maxLength={3}
-                />
+                <View style={styles.rgbControls}>
+                  <TouchableOpacity
+                    style={[styles.rgbButton, { backgroundColor: theme.colors.primary + '20' }]}
+                    onPress={() => {
+                      const newValue = Math.max(0, rgbValues.r - 1);
+                      const newRgb = { ...rgbValues, r: newValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                  >
+                    <Ionicons name="remove" size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.rgbInput, {
+                      backgroundColor: theme.colors.background,
+                      color: theme.colors.text,
+                      borderColor: theme.colors.border,
+                    }]}
+                    value={String(Math.round(rgbValues.r))}
+                    onChangeText={(text) => {
+                      const value = parseInt(text) || 0;
+                      const clampedValue = Math.max(0, Math.min(255, value));
+                      const newRgb = { ...rgbValues, r: clampedValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                    keyboardType="numeric"
+                    maxLength={3}
+                  />
+                  <TouchableOpacity
+                    style={[styles.rgbButton, { backgroundColor: theme.colors.primary + '20' }]}
+                    onPress={() => {
+                      const newValue = Math.min(255, rgbValues.r + 1);
+                      const newRgb = { ...rgbValues, r: newValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                  >
+                    <Ionicons name="add" size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Green Slider */}
@@ -2385,23 +2444,47 @@ export default function DiaryScreen() {
                   maximumTrackTintColor="#d1fae5"
                   thumbTintColor="#10b981"
                 />
-                <TextInput
-                  style={[styles.rgbInput, {
-                    backgroundColor: theme.colors.background,
-                    color: theme.colors.text,
-                    borderColor: theme.colors.border,
-                  }]}
-                  value={String(Math.round(rgbValues.g))}
-                  onChangeText={(text) => {
-                    const value = parseInt(text) || 0;
-                    const clampedValue = Math.max(0, Math.min(255, value));
-                    const newRgb = { ...rgbValues, g: clampedValue };
-                    setRgbValues(newRgb);
-                    setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
-                  }}
-                  keyboardType="numeric"
-                  maxLength={3}
-                />
+                <View style={styles.rgbControls}>
+                  <TouchableOpacity
+                    style={[styles.rgbButton, { backgroundColor: theme.colors.primary + '20' }]}
+                    onPress={() => {
+                      const newValue = Math.max(0, rgbValues.g - 1);
+                      const newRgb = { ...rgbValues, g: newValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                  >
+                    <Ionicons name="remove" size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.rgbInput, {
+                      backgroundColor: theme.colors.background,
+                      color: theme.colors.text,
+                      borderColor: theme.colors.border,
+                    }]}
+                    value={String(Math.round(rgbValues.g))}
+                    onChangeText={(text) => {
+                      const value = parseInt(text) || 0;
+                      const clampedValue = Math.max(0, Math.min(255, value));
+                      const newRgb = { ...rgbValues, g: clampedValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                    keyboardType="numeric"
+                    maxLength={3}
+                  />
+                  <TouchableOpacity
+                    style={[styles.rgbButton, { backgroundColor: theme.colors.primary + '20' }]}
+                    onPress={() => {
+                      const newValue = Math.min(255, rgbValues.g + 1);
+                      const newRgb = { ...rgbValues, g: newValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                  >
+                    <Ionicons name="add" size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Blue Slider */}
@@ -2421,23 +2504,47 @@ export default function DiaryScreen() {
                   maximumTrackTintColor="#dbeafe"
                   thumbTintColor="#3b82f6"
                 />
-                <TextInput
-                  style={[styles.rgbInput, {
-                    backgroundColor: theme.colors.background,
-                    color: theme.colors.text,
-                    borderColor: theme.colors.border,
-                  }]}
-                  value={String(Math.round(rgbValues.b))}
-                  onChangeText={(text) => {
-                    const value = parseInt(text) || 0;
-                    const clampedValue = Math.max(0, Math.min(255, value));
-                    const newRgb = { ...rgbValues, b: clampedValue };
-                    setRgbValues(newRgb);
-                    setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
-                  }}
-                  keyboardType="numeric"
-                  maxLength={3}
-                />
+                <View style={styles.rgbControls}>
+                  <TouchableOpacity
+                    style={[styles.rgbButton, { backgroundColor: theme.colors.primary + '20' }]}
+                    onPress={() => {
+                      const newValue = Math.max(0, rgbValues.b - 1);
+                      const newRgb = { ...rgbValues, b: newValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                  >
+                    <Ionicons name="remove" size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.rgbInput, {
+                      backgroundColor: theme.colors.background,
+                      color: theme.colors.text,
+                      borderColor: theme.colors.border,
+                    }]}
+                    value={String(Math.round(rgbValues.b))}
+                    onChangeText={(text) => {
+                      const value = parseInt(text) || 0;
+                      const clampedValue = Math.max(0, Math.min(255, value));
+                      const newRgb = { ...rgbValues, b: clampedValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                    keyboardType="numeric"
+                    maxLength={3}
+                  />
+                  <TouchableOpacity
+                    style={[styles.rgbButton, { backgroundColor: theme.colors.primary + '20' }]}
+                    onPress={() => {
+                      const newValue = Math.min(255, rgbValues.b + 1);
+                      const newRgb = { ...rgbValues, b: newValue };
+                      setRgbValues(newRgb);
+                      setNewColorValue(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+                    }}
+                  >
+                    <Ionicons name="add" size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
             
@@ -3575,6 +3682,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 18,
     zIndex: 1,
+    position: 'relative',
   },
   sliderTrack: {
     height: 4,
@@ -3599,6 +3707,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 3,
+  },
+  rgbControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rgbButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   rgbInput: {
     width: 50,

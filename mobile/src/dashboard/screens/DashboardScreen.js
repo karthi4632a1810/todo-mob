@@ -10,6 +10,7 @@ import DatePicker from '../../common/components/DatePicker';
 import Picker from '../../common/components/Picker';
 import BarChart from '../../common/components/BarChart';
 import TopBar from '../../common/components/TopBar';
+import SearchScreen from '../../common/components/SearchScreen';
 import { useTheme } from '../../common/theme/ThemeContext';
 
 export default function DashboardScreen() {
@@ -23,6 +24,7 @@ export default function DashboardScreen() {
   const [customDateRange, setCustomDateRange] = useState({ from: null, to: null });
   const [showCustomDateModal, setShowCustomDateModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showSearchScreen, setShowSearchScreen] = useState(false);
   
   // Director-only filters
   const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -234,8 +236,9 @@ export default function DashboardScreen() {
       const dateRange = getDateRange();
       const params = { ...dateRange };
       
-      // Filter stats by due date (not creation date) for task cards and statistics
-      params.filterByDueDate = 'true';
+      // Filter stats by creation date (when task was created) for accurate statistics
+      // This ensures tasks created today show up in "Today" filter
+      // By not setting filterByDueDate, backend defaults to filtering by createdAt
       
       // Add Director-only filters
       // Department must be selected first, then HOD or Employee
@@ -539,21 +542,13 @@ export default function DashboardScreen() {
               </View>
               <View style={styles.headerRight}>
                 <TouchableOpacity
-                  onPress={() => {
-                    if (isDirector) {
-                      setShowFilterModal(true);
-                    }
-                  }}
+                  onPress={() => navigation.navigate('Notifications')}
                   style={styles.menuIconButton}
                 >
                   <Ionicons name="notifications-outline" size={22} color={theme.colors.text} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => {
-                    if (isDirector) {
-                      setShowFilterModal(true);
-                    }
-                  }}
+                  onPress={() => setShowSearchScreen(true)}
                   style={styles.menuIconButton}
                 >
                   <Ionicons name="search-outline" size={22} color={theme.colors.text} />
@@ -1065,6 +1060,12 @@ export default function DashboardScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Search Screen */}
+      <SearchScreen
+        visible={showSearchScreen}
+        onClose={() => setShowSearchScreen(false)}
+      />
       </ScrollView>
     </View>
   );
