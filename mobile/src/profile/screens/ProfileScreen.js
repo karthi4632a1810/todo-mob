@@ -1,19 +1,29 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logout, clearCredentials } from '../../store/slices/authSlice';
 import { storage } from '../../services/storage';
 import Card from '../../common/components/Card';
 import Avatar from '../../common/components/Avatar';
 import { useTheme } from '../../common/theme/ThemeContext';
 
+const PROFILE_PHOTO_KEY = 'profilePhoto';
+
 export default function ProfileScreen() {
   const dispatch = useDispatch();
   const navigation = useNavigation();
   const { user } = useSelector((state) => state.auth);
   const theme = useTheme();
+  const [profilePhotoUri, setProfilePhotoUri] = useState(null);
+
+  // Load profile photo on mount
+  useEffect(() => {
+    loadProfilePhoto();
+  }, []);
 
   // Debug: Log user data
   React.useEffect(() => {
@@ -21,6 +31,95 @@ export default function ProfileScreen() {
       console.log('ProfileScreen - User data:', JSON.stringify(user, null, 2));
     }
   }, [user]);
+
+  const loadProfilePhoto = async () => {
+    try {
+      const photoUri = await AsyncStorage.getItem(`${PROFILE_PHOTO_KEY}_${user?._id}`);
+      if (photoUri) {
+        setProfilePhotoUri(photoUri);
+      }
+    } catch (error) {
+      console.error('Error loading profile photo:', error);
+    }
+  };
+
+  const requestPermissions = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Sorry, we need camera roll permissions to upload your profile photo!',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleImagePicker = async () => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    Alert.alert(
+      'Select Photo',
+      'Choose an option',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Camera', onPress: () => pickImage('camera') },
+        { text: 'Gallery', onPress: () => pickImage('gallery') },
+      ]
+    );
+  };
+
+  const pickImage = async (source) => {
+    try {
+      let result;
+      
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Permission Required',
+            'Sorry, we need camera permissions to take a photo!',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        setProfilePhotoUri(uri);
+        
+        // Save to AsyncStorage
+        try {
+          await AsyncStorage.setItem(`${PROFILE_PHOTO_KEY}_${user?._id}`, uri);
+          Alert.alert('Success', 'Profile photo updated successfully!');
+        } catch (error) {
+          console.error('Error saving profile photo:', error);
+          Alert.alert('Error', 'Failed to save profile photo');
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
 
   const handleLogout = async () => {
     Alert.alert(
@@ -87,9 +186,17 @@ export default function ProfileScreen() {
           {/* Avatar Section */}
           <View style={styles.avatarSection}>
             <View style={styles.avatarContainer}>
-              <Avatar name={user?.name} size={120} style={styles.avatar} />
-              <TouchableOpacity style={styles.editAvatarBadge}>
-                <Ionicons name="pencil" size={16} color="#ffffff" />
+              <Avatar 
+                name={user?.name} 
+                size={120} 
+                style={styles.avatar}
+                uri={profilePhotoUri}
+              />
+              <TouchableOpacity 
+                style={styles.editAvatarBadge}
+                onPress={handleImagePicker}
+              >
+                <Ionicons name="camera" size={16} color="#ffffff" />
               </TouchableOpacity>
             </View>
             <Text style={styles.userName}>{user?.name || 'User'}</Text>

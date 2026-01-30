@@ -14,17 +14,32 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "org.mapims.todoapp"
+      "bundleIdentifier": "org.mapims.todoapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs access to your camera to take profile photos.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select profile photos."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       },
       "package": "org.mapims.todoapp",
-      "permissions": []
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you set your profile picture.",
+          "cameraPermission": "The app accesses your camera to let you take a profile picture."
+        }
+      ]
     ],
     "extra": {
       "eas": {
